@@ -1,0 +1,63 @@
+name: Release (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        description: "Tag to package (for workflow_dispatch callers)"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      CF_API_KEY:
+        required: false
+      WAGO_API_TOKEN:
+        required: false
+      GITHUB_OAUTH:
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Package and Upload
+    runs-on: ubuntu-latest
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_OAUTH }}
+    steps:
+      - name: Resolve tag
+        id: resolve
+        shell: bash
+        run: |
+          if [[ -n "${{ inputs.tag_name }}" ]]; then
+            TAG="${{ inputs.tag_name }}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
+          echo "TAG_NAME=$TAG" >> "$GITHUB_ENV"
+
+      - name: Checkout tag
+        uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ env.TAG_NAME }}
+          fetch-depth: 0
+
+      - name: Fetch changelog script
+        shell: bash
+        run: |
+          mkdir -p scripts
+          curl -sSfL \
+            "https://raw.githubusercontent.com/Xerrion/wow-workflows/main/scripts/generate_changelog.sh" \
+            -o scripts/generate_changelog.sh
+          chmod +x scripts/generate_changelog.sh
+
+      - name: Generate changelog
+        run: bash scripts/generate_changelog.sh
+
+      - name: Package and upload
+        uses: BigWigsMods/packager@v2
+        env:
+          GITHUB_REF: refs/tags/${{ env.TAG_NAME }}
