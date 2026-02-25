@@ -13,11 +13,6 @@ on:
         required: false
         type: string
         default: ".release-please-manifest.json"
-
-permissions:
-  contents: write
-  pull-requests: write
-
 jobs:
   release-please:
     runs-on: ubuntu-latest

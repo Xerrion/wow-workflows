@@ -15,10 +15,6 @@ on:
         required: false
       GITHUB_OAUTH:
         required: true
-
-permissions:
-  contents: write
-
 jobs:
   package:
     name: Package and Upload
