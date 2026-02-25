@@ -13,8 +13,7 @@ on:
         required: false
       WAGO_API_TOKEN:
         required: false
-      GITHUB_OAUTH:
-        required: true
+
 jobs:
   package:
     name: Package and Upload
@@ -22,7 +21,7 @@ jobs:
     env:
       CF_API_KEY: ${{ secrets.CF_API_KEY }}
       WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
-      GITHUB_OAUTH: ${{ secrets.GITHUB_OAUTH }}
+      GITHUB_OAUTH: ${{ github.token }}
     steps:
       - name: Resolve tag
         id: resolve
