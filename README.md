@@ -6,12 +6,12 @@ Shared reusable GitHub Actions workflows for WoW addon release pipelines.
 
 ### Release (`release.yml`)
 
-End-to-end release pipeline combining release-please and BigWigsMods/packager into a single workflow call. Two jobs:
+Runs release-please to create/update release PRs. When a release PR is merged, it publishes a GitHub release and dispatches the packager workflow to build and upload the addon.
 
-1. **release-please** - Creates/updates release PRs via [release-please-action@v4](https://github.com/googleapis/release-please-action). When a release PR is merged, it publishes a GitHub release and emits outputs.
-2. **package** - Gated on `release_created == 'true'`. Generates a changelog, then packages and uploads the addon via [BigWigsMods/packager@v2](https://github.com/BigWigsMods/packager-action).
+**How it works:**
 
-> **Why one workflow?** The previous two-workflow design (`release-pr.yml` + tag-triggered `release.yml`) required a `GITHUB_OAUTH` PAT because tags created by `GITHUB_TOKEN` do not trigger downstream `on: push: tags` workflows. Combining both jobs into one `workflow_call` eliminates that limitation - the package job runs in the same workflow run as release-please, so no secondary trigger is needed.
+1. **release-please** creates/updates release PRs via [release-please-action@v4](https://github.com/googleapis/release-please-action). When a release PR is merged, it publishes a GitHub release with a tag.
+2. **dispatch** triggers the `packager.yml` workflow in the calling repo via `workflow_dispatch`, passing the new tag name. This avoids the GitHub Actions limitation where tags created by `GITHUB_TOKEN` don't trigger `on: push: tags` workflows, and sidesteps the BigWigsMods/packager "future tag" guard that blocks packaging on branch push events.
 
 **Inputs:**
 
@@ -20,19 +20,12 @@ End-to-end release pipeline combining release-please and BigWigsMods/packager in
 | `config-file` | `release-please-config.json` | Path to release-please config |
 | `manifest-file` | `.release-please-manifest.json` | Path to release-please manifest |
 
-**Secrets:**
-
-| Secret | Required | Description |
-|--------|----------|-------------|
-| `CF_API_KEY` | No | CurseForge API key |
-| `WAGO_API_TOKEN` | No | Wago Addons API token |
-
 **Outputs:**
 
 | Output | Description |
 |--------|-------------|
 | `release_created` | Whether a release was created (`true`/`false`) |
-| `tag_name` | The release tag name (e.g. `v1.2.3`) |
+| `tag_name` | The release tag name (e.g. `1.2.3`) |
 
 **Caller example:**
 
@@ -46,10 +39,54 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   release:
     uses: Xerrion/wow-workflows/.github/workflows/release.yml@main
+    secrets: inherit
+```
+
+> **Note:** The `actions: write` permission is required so the release workflow can dispatch the packager workflow.
+
+### Packager (`packager.yml`)
+
+Generates a changelog and packages/uploads the addon via [BigWigsMods/packager@v2](https://github.com/BigWigsMods/packager-action). Triggered by `workflow_dispatch` from the release workflow (or manually).
+
+**Inputs:**
+
+| Input | Required | Description |
+|-------|----------|-------------|
+| `tag_name` | Yes | The tag to package (e.g. `1.2.3`) |
+
+**Secrets:**
+
+| Secret | Required | Description |
+|--------|----------|-------------|
+| `CF_API_KEY` | No | CurseForge API key |
+| `WAGO_API_TOKEN` | No | Wago Addons API token |
+
+**Caller example:**
+
+```yaml
+name: Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "The tag to package"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    uses: Xerrion/wow-workflows/.github/workflows/packager.yml@main
+    with:
+      tag_name: ${{ inputs.tag_name }}
     secrets: inherit
 ```
 
