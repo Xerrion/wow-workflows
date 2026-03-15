@@ -49,8 +49,48 @@ permissions:
 
 jobs:
   release:
-    uses: DragonAddons/wow-workflows/.github/workflows/release.yml@main
+    uses: Xerrion/wow-workflows/.github/workflows/release.yml@main
     secrets: inherit
+```
+
+### Lint (`lint.yml`)
+
+Runs Luacheck on PRs, with an optional busted test suite.
+
+**Inputs:**
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `run-tests` | `false` | Run busted test suite after linting |
+
+**Caller example (lint only):**
+
+```yaml
+name: Lint
+
+on:
+  pull_request_target:
+    branches: [master]
+
+jobs:
+  lint:
+    uses: Xerrion/wow-workflows/.github/workflows/lint.yml@main
+```
+
+**Caller example (lint + tests):**
+
+```yaml
+name: Lint
+
+on:
+  pull_request_target:
+    branches: [master]
+
+jobs:
+  lint:
+    uses: Xerrion/wow-workflows/.github/workflows/lint.yml@main
+    with:
+      run-tests: true
 ```
 
 ### TOC Update (`toc-update.yml`)
@@ -79,10 +119,11 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   toc-update:
-    uses: DragonAddons/wow-workflows/.github/workflows/toc-update.yml@main
+    uses: Xerrion/wow-workflows/.github/workflows/toc-update.yml@main
     with:
       flavors: "retail classic tbc"
 ```
@@ -112,8 +153,10 @@ Fetches latest WoW interface versions from the Blizzard CDN v2 (`us.version.batt
 
 ## Adopting Repos
 
-- [DragonLoot](https://github.com/DragonAddons/DragonLoot)
-- [DragonToast](https://github.com/DragonAddons/DragonToast)
-- [LibAnimate](https://github.com/DragonAddons/LibAnimate)
+- [AddonName](https://github.com/Xerrion/AddonName)
+- [DragonLoot](https://github.com/Xerrion/DragonLoot)
+- [DragonToast](https://github.com/Xerrion/DragonToast)
+- [LibAnimate](https://github.com/Xerrion/LibAnimate)
+- [LibDragonFramework](https://github.com/Xerrion/LibDragonFramework)
 - [PhDamage](https://github.com/Xerrion/PhDamage)
 - [RaidLogAuto](https://github.com/Xerrion/RaidLogAuto)

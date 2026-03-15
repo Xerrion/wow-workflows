@@ -19,13 +19,14 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   update-toc:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: ${{ inputs.base-branch }}
 
@@ -34,7 +35,7 @@ jobs:
         run: |
           mkdir -p scripts
           curl -sSfL \
-            "https://raw.githubusercontent.com/DragonAddons/wow-workflows/main/scripts/update_toc_versions.sh" \
+            "https://raw.githubusercontent.com/Xerrion/wow-workflows/main/scripts/update_toc_versions.sh" \
             -o scripts/update_toc_versions.sh
           chmod +x scripts/update_toc_versions.sh
 
@@ -69,7 +70,7 @@ jobs:
         if: steps.diff.outputs.has_changes == 'true'
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BRANCH="chore/toc-interface-version"
           TITLE="chore: update TOC Interface versions"
