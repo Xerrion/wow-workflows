@@ -1,0 +1,11 @@
+# Rust build artifacts
+scripts/update-toc-versions/target/
+scripts/update-toc-versions.bin
+**target/
+
+# Node modules
+node_modules/
+
+# macOS
+.DS_Store
+

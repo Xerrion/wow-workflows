@@ -1,0 +1,10 @@
+[package]
+name = "generate-changelog"
+version = "0.1.0"
+edition = "2021"
+description = "Generate a clean changelog from git log between two tags"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+regex = "1"

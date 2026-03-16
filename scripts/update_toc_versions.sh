@@ -17,6 +17,35 @@ readonly MAX_RETRIES=5
 readonly RETRY_DELAY=2
 readonly VALID_FLAVORS=("retail" "classic" "vanilla" "tbc")
 readonly DEFAULT_EXCLUDE_DIRS=("Libs")
+DRY_RUN=false
+
+# Platform-aware in-place sed (BSD sed requires an explicit backup suffix)
+if sed --version 2>/dev/null | grep -q 'GNU'; then
+    sedi() { sed -i "$@"; }
+else
+    sedi() { sed -i '' "$@"; }
+fi
+
+# ---------------------------------------------------------------------------
+# version_to_flavor - Map an interface version number to its flavor name
+#
+# Args: $1 = interface version string (e.g. "120001", "50502", "11503")
+# Returns: flavor name via stdout ("retail", "classic", "vanilla", "tbc",
+#          "cata", "wrath", or "unknown")
+# ---------------------------------------------------------------------------
+version_to_flavor() {
+    [[ "$1" =~ ^[0-9]+$ ]] || { echo "unknown"; return 0; }
+    local ver=$(( 10#$1 ))
+
+    if (( ver >= 100000 )); then echo "retail"
+    elif (( ver >= 50000 )); then echo "classic"
+    elif (( ver >= 40000 )); then echo "cata"
+    elif (( ver >= 30000 )); then echo "wrath"
+    elif (( ver >= 20000 )); then echo "tbc"
+    elif (( ver >= 10000 )); then echo "vanilla"
+    else echo "unknown"
+    fi
+}
 
 # ---------------------------------------------------------------------------
 # Version cache - avoid fetching the same CDN product twice
@@ -37,13 +66,16 @@ Options:
   --flavor FLAVOR       Flavor to update (can be specified multiple times)
                         Valid: retail, classic, vanilla, tbc
                         Default: all flavors
+  --path DIR            Directory to search for .toc files (default: current directory)
   --exclude-dir DIR     Directory to exclude from TOC search (can be specified
                         multiple times). Default: Libs
+  --dry-run             Show what would change without modifying files
   --help                Show this help message
 
 Examples:
   bash scripts/update_toc_versions.sh
   bash scripts/update_toc_versions.sh --flavor retail --flavor classic
+  bash scripts/update_toc_versions.sh --path /path/to/addons
   bash scripts/update_toc_versions.sh --exclude-dir Libs --exclude-dir vendor
 EOF
     exit 0
@@ -70,10 +102,10 @@ fetch_version() {
 
     while (( attempt < MAX_RETRIES )); do
         attempt=$((attempt + 1))
-        response=$(curl -sf "$url" 2>/dev/null) && break
+        response=$(curl -sf --connect-timeout 10 --max-time 30 "$url" 2>/dev/null) && break
 
         if (( attempt < MAX_RETRIES )); then
-            echo "  Retry ${attempt}/${MAX_RETRIES} for ${product}..." >&2
+            echo "  Attempt ${attempt}/${MAX_RETRIES} failed, retrying in ${RETRY_DELAY}s..." >&2
             sleep "$RETRY_DELAY"
         fi
     done
@@ -83,10 +115,24 @@ fetch_version() {
         return 1
     fi
 
-    # Response is pipe-delimited. Find the US region row and extract field 6 (VersionsName).
-    # Header row defines columns; data rows start with region name.
+    # Parse header row to find VersionsName column index dynamically.
+    # Header fields have type suffixes (e.g. "VersionsName!STRING:0") which we strip.
+    local col_index=""
+    col_index=$(echo "$response" | head -1 | awk -F'|' '{
+        for (i = 1; i <= NF; i++) {
+            name = $i
+            sub(/!.*/, "", name)
+            if (name == "VersionsName") { print i; exit }
+        }
+    }')
+
+    if [[ -z "$col_index" ]]; then
+        echo "ERROR: VersionsName column not found in CDN response header for ${product}" >&2
+        return 1
+    fi
+
     local versions_name=""
-    versions_name=$(echo "$response" | awk -F'|' '$1 == "us" { print $6 }')
+    versions_name=$(echo "$response" | awk -F'|' -v col="$col_index" '$1 == "us" { print $col }')
 
     if [[ -z "$versions_name" ]]; then
         echo "ERROR: Could not parse US region version for ${product}" >&2
@@ -101,6 +147,12 @@ fetch_version() {
     local interface_version=""
     interface_version=$(echo "$game_version" | awk -F. '{printf "%d%02d%02d\n", $1, $2, $3}')
 
+    # Validate interface version is a 5-6 digit number
+    if [[ ! "$interface_version" =~ ^[0-9]{5,6}$ ]]; then
+        echo "ERROR: Invalid interface version '${interface_version}' for ${product} (expected 5-6 digits)" >&2
+        return 1
+    fi
+
     # Cache the result
     VERSION_CACHE[$product]="$interface_version"
 
@@ -110,14 +162,17 @@ fetch_version() {
 # ---------------------------------------------------------------------------
 # find_toc_files - Discover .toc files, excluding specified directories
 #
-# Args: $@ = directories to exclude
+# Args: $1 = directory to search
+#        $2.. = directories to exclude
 # Returns: list of toc file paths via stdout
 # ---------------------------------------------------------------------------
 find_toc_files() {
+    local search_dir="$1"
+    shift
     local exclude_dirs=("$@")
     local find_args=()
 
-    find_args+=("." "-name" "*.toc")
+    find_args+=("$search_dir" "-name" "*.toc")
 
     for dir in "${exclude_dirs[@]}"; do
         find_args+=("-not" "-path" "*/${dir}/*")
@@ -127,44 +182,98 @@ find_toc_files() {
 }
 
 # ---------------------------------------------------------------------------
-# update_toc_directive - Update a single directive in a TOC file if it exists
+# update_toc_directive - Update a single directive in a TOC file if it exists,
+#                        preserving comma-separated multi-value lists.
 #
 # Args: $1 = toc file path
 #        $2 = directive suffix (empty string for "## Interface:", or e.g. "-Mists")
 #        $3 = new version value
+#        $4 = target flavor (e.g. "retail", "classic") - used to identify which
+#             value to replace in bare "## Interface:" multi-value lists
 # Returns: 0 if updated, 1 if directive not found or unchanged
 # ---------------------------------------------------------------------------
 update_toc_directive() {
     local toc_file="$1"
     local suffix="$2"
     local version="$3"
+    local target_flavor="$4"
 
     local directive="## Interface${suffix}:"
-    local pattern="^## Interface${suffix}: .*$"
-    local replacement="## Interface${suffix}: ${version}"
 
-    # Check if directive exists in the file
+    # Guard: directive must exist in the file
     if ! grep -q "^## Interface${suffix}: " "$toc_file"; then
         return 1
     fi
 
-    # Read the current value for logging
+    # Read the current full value string for parsing
     local current_value=""
-    current_value=$(grep "^## Interface${suffix}: " "$toc_file" | sed "s/^## Interface${suffix}: //")
+    current_value=$(grep -m 1 "^## Interface${suffix}: " "$toc_file" | sed "s/^## Interface${suffix}: //")
 
-    # Compare only the first (latest) version in a comma-separated list
-    local first_value
-    first_value=$(echo "$current_value" | cut -d',' -f1 | tr -d ' ')
+    # Parse comma-separated values into an array, trimming whitespace and \r
+    local values=()
+    local IFS=','
+    for val in $current_value; do
+        val=$(echo "$val" | tr -d ' \r')
+        [[ -n "$val" ]] && values+=("$val")
+    done
+    unset IFS
 
-    if [[ "$first_value" == "$version" ]]; then
-        echo "  ${directive} ${current_value} (unchanged)"
+    # Guard: if the new version already appears anywhere, nothing to do
+    for val in "${values[@]}"; do
+        if [[ "$val" == "$version" ]]; then
+            echo "  ${directive} ${current_value} (unchanged)"
+            return 1
+        fi
+    done
+
+    # Build the replacement value list
+    local new_values=()
+    local replaced=false
+
+    if [[ -n "$suffix" ]]; then
+        # Flavor-specific directive: all values share the same flavor.
+        # Replace only the FIRST value, keep the rest as-is.
+        new_values=("$version" "${values[@]:1}")
+        replaced=true
+    else
+        # Bare "## Interface:" - values can belong to different flavors.
+        # Replace only the FIRST value whose flavor matches target_flavor.
+        for (( i = 0; i < ${#values[@]}; i++ )); do
+            local val_flavor
+            val_flavor=$(version_to_flavor "${values[$i]}")
+            if [[ "$replaced" != "true" ]] && [[ "$val_flavor" == "$target_flavor" ]]; then
+                new_values+=("$version")
+                replaced=true
+            else
+                new_values+=("${values[$i]}")
+            fi
+        done
+    fi
+
+    # Guard: if no value was replaced, don't modify the file
+    if [[ "$replaced" != "true" ]]; then
         return 1
     fi
 
-    # Perform the replacement
-    sed -i "s/${pattern}/${replacement}/" "$toc_file"
+    # Reconstruct the replacement line with consistent ", " spacing
+    local joined=""
+    for (( i = 0; i < ${#new_values[@]}; i++ )); do
+        if (( i > 0 )); then
+            joined+=", "
+        fi
+        joined+="${new_values[$i]}"
+    done
+    local replacement="## Interface${suffix}: ${joined}"
+    local pattern="^## Interface${suffix}: .*$"
 
-    echo "  ${directive} ${current_value} -> ${version}"
+    # Perform the replacement
+    if [[ "$DRY_RUN" == "true" ]]; then
+        echo "  ${directive} ${current_value} -> ${joined} (dry-run)"
+    else
+        # Safe: suffix is from a hardcoded set, version is validated as digits-only
+        sedi "s|${pattern}|${replacement}|" "$toc_file"
+        echo "  ${directive} ${current_value} -> ${joined}"
+    fi
     return 0
 }
 
@@ -187,43 +296,43 @@ update_toc_file() {
     for flavor in "${flavors[@]}"; do
         case "$flavor" in
             retail)
-                if update_toc_directive "$toc_file" "" "$RETAIL_VERSION"; then
+                if update_toc_directive "$toc_file" "" "$RETAIL_VERSION" "retail"; then
                     file_changed=true
                 fi
                 ;;
             classic)
-                if update_toc_directive "$toc_file" "-Mists" "$CLASSIC_VERSION"; then
+                if update_toc_directive "$toc_file" "-Mists" "$CLASSIC_VERSION" "classic"; then
                     file_changed=true
                 fi
                 # classic flavor owns ## Interface-Classic: (MoP takes priority)
-                if update_toc_directive "$toc_file" "-Classic" "$CLASSIC_VERSION"; then
+                if update_toc_directive "$toc_file" "-Classic" "$CLASSIC_VERSION" "classic"; then
                     file_changed=true
                 fi
                 ;;
             vanilla)
                 # Only update ## Interface-Vanilla: unconditionally
-                if update_toc_directive "$toc_file" "-Vanilla" "$VANILLA_VERSION"; then
+                if update_toc_directive "$toc_file" "-Vanilla" "$VANILLA_VERSION" "vanilla"; then
                     file_changed=true
                 fi
                 # Only update ## Interface-Classic: if the classic flavor is NOT active
                 if [[ "$HAS_CLASSIC_FLAVOR" != "true" ]]; then
-                    if update_toc_directive "$toc_file" "-Classic" "$VANILLA_VERSION"; then
+                    if update_toc_directive "$toc_file" "-Classic" "$VANILLA_VERSION" "vanilla"; then
                         file_changed=true
                     fi
                 fi
                 ;;
             tbc)
-                if update_toc_directive "$toc_file" "-BCC" "$TBC_VERSION"; then
+                if update_toc_directive "$toc_file" "-BCC" "$TBC_VERSION" "tbc"; then
                     file_changed=true
                 fi
-                if update_toc_directive "$toc_file" "-TBC" "$TBC_VERSION"; then
+                if update_toc_directive "$toc_file" "-TBC" "$TBC_VERSION" "tbc"; then
                     file_changed=true
                 fi
                 ;;
         esac
     done
 
-    $file_changed
+    [[ "$file_changed" == "true" ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -233,6 +342,7 @@ main() {
     local flavors=()
     local exclude_dirs=()
     local exclude_dirs_specified=false
+    local search_dir="."
 
     # -- Parse CLI arguments --------------------------------------------------
     while [[ $# -gt 0 ]]; do
@@ -267,6 +377,22 @@ main() {
                 exclude_dirs+=("$2")
                 exclude_dirs_specified=true
                 shift 2
+                ;;
+            --path)
+                if [[ -z "${2:-}" ]]; then
+                    echo "ERROR: --path requires a value" >&2
+                    exit 1
+                fi
+                if [[ ! -d "$2" ]]; then
+                    echo "ERROR: '${2}' is not a directory" >&2
+                    exit 1
+                fi
+                search_dir="$2"
+                shift 2
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
                 ;;
             *)
                 echo "ERROR: Unknown argument '${1}'" >&2
@@ -325,7 +451,7 @@ main() {
 
     while IFS= read -r f; do
         toc_files+=("$f")
-    done < <(find_toc_files "${exclude_dirs[@]}")
+    done < <(find_toc_files "$search_dir" "${exclude_dirs[@]}")
 
     if [[ ${#toc_files[@]} -eq 0 ]]; then
         echo "No .toc files found"
@@ -368,9 +494,9 @@ main() {
 
     # -- Summary --------------------------------------------------------------
     if (( updated_count > 0 )); then
-        echo "Updated ${updated_count} files"
+        echo "Updated ${updated_count} file(s)"
     else
-        echo "No changes needed"
+        echo "No changes needed - all versions are current"
     fi
 
     exit 0

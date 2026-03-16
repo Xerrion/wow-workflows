@@ -16,10 +16,6 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: packager-${{ github.repository }}
-  cancel-in-progress: true
-
 jobs:
   package:
     name: Package and Upload
@@ -35,19 +31,17 @@ jobs:
           ref: refs/tags/${{ inputs.tag_name }}
           fetch-depth: 0
 
-      - name: Checkout reusable workflow scripts
-        uses: actions/checkout@v6
-        with:
-          repository: Xerrion/wow-workflows
-          ref: ${{ github.job_workflow_sha }}
-          sparse-checkout: scripts
-          path: .wow-workflows
+      - name: Fetch changelog script
+        shell: bash
+        run: |
+          mkdir -p scripts
+          curl -sSfL \
+            "https://raw.githubusercontent.com/Xerrion/wow-workflows/main/scripts/generate_changelog.sh" \
+            -o scripts/generate_changelog.sh
+          chmod +x scripts/generate_changelog.sh
 
       - name: Generate changelog
-        shell: bash
-        env:
-          TAG_NAME: ${{ inputs.tag_name }}
-        run: bash .wow-workflows/scripts/generate_changelog.sh --no-sub-commits --linkify-prs
+        run: bash scripts/generate_changelog.sh
 
       - name: Package and upload
         uses: BigWigsMods/packager@v2
