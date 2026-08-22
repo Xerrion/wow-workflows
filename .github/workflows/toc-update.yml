@@ -41,6 +41,9 @@ jobs:
           ref: ${{ github.job_workflow_sha }}
           path: .wow-workflows
           sparse-checkout: scripts
+          # Read-only clone of a public repo; leaving the token in .git/config here
+          # would expose it to the scripts this checkout provides.
+          persist-credentials: false
 
       # Build --flavor args from the space-separated input and run the updater
       - name: Update TOC versions
@@ -66,10 +69,13 @@ jobs:
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
             echo "TOC changes detected:"
             git diff --name-only
+            # The diff is untrusted content: a literal "EOF" line would close the
+            # multiline block early, so use an unguessable delimiter.
+            DELIMITER="diff_summary_$(openssl rand -hex 16)"
             {
-              echo "diff_summary<<EOF"
+              echo "diff_summary<<$DELIMITER"
               git diff --unified=0 -- '*.toc' | grep -E '^[+-]## Interface' || echo "See diff for details"
-              echo "EOF"
+              echo "$DELIMITER"
             } >> "$GITHUB_OUTPUT"
           fi
 
@@ -79,6 +85,10 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_BRANCH: ${{ inputs.base-branch }}
+          # Passed through the environment rather than interpolated into the script:
+          # the diff is untrusted multiline text and would otherwise be executable.
+          DIFF_SUMMARY: ${{ steps.diff.outputs.diff_summary }}
         run: |
           BRANCH="chore/toc-interface-version"
           TITLE="chore: update TOC Interface versions"
@@ -94,20 +104,24 @@ jobs:
           git add -A '*.toc'
           git commit -m "$TITLE"
 
-          # Force-push the branch (overwrites previous auto-update if still open)
-          git push --force-with-lease origin "$BRANCH"
+          # Force-push the branch (overwrites previous auto-update if still open).
+          # --force-with-lease needs a value to compare the remote ref against, and the
+          # shallow checkout has no remote-tracking ref for the update branch. Read the
+          # remote tip directly; an empty result becomes an empty lease, which git reads
+          # as "the ref must not exist yet", which is correct for the first run.
+          REMOTE_SHA="$(git ls-remote origin "refs/heads/$BRANCH" | cut -f1)"
+          git push --force-with-lease="$BRANCH:$REMOTE_SHA" origin "$BRANCH"
 
           # Ensure the automated label exists
           gh label create "automated" --description "Auto-generated changes" --color "ededed" 2>/dev/null || true
 
           # Build a PR body that includes the actual version diff
-          DIFF_SUMMARY="${{ steps.diff.outputs.diff_summary }}"
           printf -v BODY 'Automated update of `## Interface` versions in TOC files based on latest Blizzard CDN data.\n\n```diff\n%s\n```' "$DIFF_SUMMARY"
 
           # Create PR if one doesn't exist, otherwise the existing PR auto-updates
           if ! gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' | grep -q .; then
             gh pr create \
-              --base "${{ inputs.base-branch }}" \
+              --base "$BASE_BRANCH" \
               --head "$BRANCH" \
               --title "$TITLE" \
               --body "$BODY" \

@@ -9,6 +9,15 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+
+# Keyed on the caller's ref so a new push to a PR cancels its superseded run
+# without disturbing runs for other branches.
+concurrency:
+  group: lint-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   luacheck:
     name: Luacheck
@@ -16,6 +25,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          # Empty on non-pull_request triggers, where checkout falls back to the
+          # ref that started the run. That fallback is the ref we want there.
           ref: ${{ github.event.pull_request.head.sha }}
       - uses: nebularg/actions-luacheck@v1
         with:
@@ -28,6 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          # See the luacheck job: empty outside pull_request, which is intended.
           ref: ${{ github.event.pull_request.head.sha }}
       - uses: leafo/gh-actions-lua@v10
         with:
