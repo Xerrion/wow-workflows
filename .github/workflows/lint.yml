@@ -12,10 +12,12 @@ on:
 permissions:
   contents: read
 
-# Keyed on the caller's ref so a new push to a PR cancels its superseded run
-# without disturbing runs for other branches.
+# Keyed on the PR number, because under pull_request_target github.ref is the
+# base branch: keying on it alone would put every PR against master in one group
+# and let a push to one PR cancel another's required check. The github.ref
+# fallback keeps the key correct on triggers that have no pull_request payload.
 concurrency:
-  group: lint-${{ github.repository }}-${{ github.ref }}
+  group: lint-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
