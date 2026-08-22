@@ -52,7 +52,11 @@ jobs:
           FLAVORS: ${{ inputs.flavors }}
         run: |
           args=()
-          for flavor in $FLAVORS; do
+          # Word-splitting is wanted here, but an unquoted $FLAVORS would also
+          # glob: a caller passing "*" would expand to the checkout's filenames.
+          # read -ra splits on IFS without touching pathname expansion.
+          IFS=' ' read -ra flavor_list <<<"$FLAVORS"
+          for flavor in "${flavor_list[@]}"; do
             args+=(--flavor "$flavor")
           done
           bash .wow-workflows/scripts/update_toc_versions.sh "${args[@]}"
