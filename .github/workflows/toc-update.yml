@@ -104,11 +104,12 @@ jobs:
           git add -A '*.toc'
           git commit -m "$TITLE"
 
-          # Force-push the branch (overwrites previous auto-update if still open).
-          # --force-with-lease needs a value to compare the remote ref against, and the
-          # shallow checkout has no remote-tracking ref for the update branch. Read the
-          # remote tip directly; an empty result becomes an empty lease, which git reads
-          # as "the ref must not exist yet", which is correct for the first run.
+          # The update branch is bot-owned and disposable: if it already exists this
+          # push overwrites it wholesale, discarding any commit anyone else pushed
+          # onto it. The lease value is not protection against that. It exists
+          # because a bare --force-with-lease is rejected as "stale info" when the
+          # shallow checkout has no remote-tracking ref, and because an empty result
+          # from ls-remote asserts "must not exist yet", which is right on first run.
           REMOTE_SHA="$(git ls-remote origin "refs/heads/$BRANCH" | cut -f1)"
           git push --force-with-lease="$BRANCH:$REMOTE_SHA" origin "$BRANCH"
 
