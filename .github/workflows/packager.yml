@@ -48,6 +48,9 @@ jobs:
           ref: ${{ github.job_workflow_sha }}
           sparse-checkout: scripts
           path: .wow-workflows
+          # Read-only clone of a public repo; leaving the token in .git/config here
+          # would expose it to the scripts this checkout provides.
+          persist-credentials: false
 
       - name: Generate changelog
         shell: bash

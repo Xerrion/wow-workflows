@@ -52,7 +52,11 @@ jobs:
           FLAVORS: ${{ inputs.flavors }}
         run: |
           args=()
-          for flavor in $FLAVORS; do
+          # Word-splitting is wanted here, but an unquoted $FLAVORS would also
+          # glob: a caller passing "*" would expand to the checkout's filenames.
+          # read -ra splits on IFS without touching pathname expansion.
+          IFS=' ' read -ra flavor_list <<<"$FLAVORS"
+          for flavor in "${flavor_list[@]}"; do
             args+=(--flavor "$flavor")
           done
           bash .wow-workflows/scripts/update_toc_versions.sh "${args[@]}"
@@ -62,13 +66,16 @@ jobs:
         id: diff
         shell: bash
         run: |
-          if git diff --quiet; then
+          # Scoped to '*.toc' to match what the PR step stages: a dirty tracked
+          # file of any other type would otherwise set has_changes=true, stage
+          # nothing, and fail the job on an empty git commit.
+          if git diff --quiet -- '*.toc'; then
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
             echo "No TOC changes detected"
           else
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
             echo "TOC changes detected:"
-            git diff --name-only
+            git diff --name-only -- '*.toc'
             # The diff is untrusted content: a literal "EOF" line would close the
             # multiline block early, so use an unguessable delimiter.
             DELIMITER="diff_summary_$(openssl rand -hex 16)"
