@@ -1,6 +1,12 @@
 name: Package and Upload (reusable)
 
 on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "The tag to package (e.g. 1.2.3)"
+        required: true
+        type: string
   workflow_call:
     inputs:
       tag_name:
