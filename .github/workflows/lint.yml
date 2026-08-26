@@ -9,6 +9,17 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+
+# Keyed on the PR number, because under pull_request_target github.ref is the
+# base branch: keying on it alone would put every PR against master in one group
+# and let a push to one PR cancel another's required check. The github.ref
+# fallback keeps the key correct on triggers that have no pull_request payload.
+concurrency:
+  group: lint-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   luacheck:
     name: Luacheck
@@ -16,6 +27,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          # Empty on non-pull_request triggers, where checkout falls back to the
+          # ref that started the run. That fallback is the ref we want there.
           ref: ${{ github.event.pull_request.head.sha }}
       - uses: nebularg/actions-luacheck@v1
         with:
@@ -28,6 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          # See the luacheck job: empty outside pull_request, which is intended.
           ref: ${{ github.event.pull_request.head.sha }}
       - uses: leafo/gh-actions-lua@v10
         with:

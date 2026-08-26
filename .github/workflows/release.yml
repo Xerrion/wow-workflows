@@ -24,7 +24,14 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # Required by the `gh workflow run` dispatch below; the read scope cannot trigger workflows.
   actions: write
+
+# Releases must not be cancelled mid-flight: a run interrupted between creating the
+# release and dispatching the packager would leave a tag with no published build.
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
   release-please:
@@ -45,7 +52,8 @@ jobs:
         if: steps.release.outputs.release_created == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
         run: |
           gh workflow run packager.yml \
             --repo "$GITHUB_REPOSITORY" \
-            --field tag_name="${{ steps.release.outputs.tag_name }}"
+            --field tag_name="$TAG_NAME"
