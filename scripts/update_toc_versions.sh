@@ -15,7 +15,7 @@ set -euo pipefail
 readonly CDN_BASE="https://us.version.battle.net/v2/products"
 readonly MAX_RETRIES=5
 readonly RETRY_DELAY=2
-readonly VALID_FLAVORS=("retail" "classic" "vanilla" "tbc")
+readonly VALID_FLAVORS=("retail" "classic" "vanilla" "tbc" "forever")
 readonly DEFAULT_EXCLUDE_DIRS=("Libs")
 DRY_RUN=false
 
@@ -31,7 +31,7 @@ fi
 #
 # Args: $1 = interface version string (e.g. "120001", "50502", "11503")
 # Returns: flavor name via stdout ("retail", "classic", "vanilla", "tbc",
-#          "cata", "wrath", or "unknown")
+#          "forever", "cata", "wrath", or "unknown")
 # ---------------------------------------------------------------------------
 version_to_flavor() {
     [[ "$1" =~ ^[0-9]+$ ]] || { echo "unknown"; return 0; }
@@ -42,6 +42,7 @@ version_to_flavor() {
     elif (( ver >= 40000 )); then echo "cata"
     elif (( ver >= 30000 )); then echo "wrath"
     elif (( ver >= 20000 )); then echo "tbc"
+    elif (( ver >= 16000 && ver < 17000 )); then echo "forever"
     elif (( ver >= 10000 )); then echo "vanilla"
     else echo "unknown"
     fi
@@ -64,7 +65,7 @@ Fetches latest WoW interface versions from Blizzard's CDN and updates
 
 Options:
   --flavor FLAVOR       Flavor to update (can be specified multiple times)
-                        Valid: retail, classic, vanilla, tbc
+                        Valid: retail, classic, vanilla, tbc, forever
                         Default: all flavors
   --path DIR            Directory to search for .toc files (default: current directory)
   --exclude-dir DIR     Directory to exclude from TOC search (can be specified
@@ -282,7 +283,8 @@ update_toc_directive() {
 #
 # Args: $1 = toc file path
 #        Remaining args = flavor names to process
-# Globals: RETAIL_VERSION, CLASSIC_VERSION, VANILLA_VERSION, TBC_VERSION
+# Globals: RETAIL_VERSION, CLASSIC_VERSION, VANILLA_VERSION, TBC_VERSION,
+#          FOREVER_VERSION
 #          HAS_CLASSIC_FLAVOR, HAS_VANILLA_FLAVOR
 # Returns: 0 if any directive was updated, 1 if no changes
 # ---------------------------------------------------------------------------
@@ -326,6 +328,17 @@ update_toc_file() {
                     file_changed=true
                 fi
                 if update_toc_directive "$toc_file" "-TBC" "$TBC_VERSION" "tbc"; then
+                    file_changed=true
+                fi
+                ;;
+            forever)
+                if update_toc_directive "$toc_file" "" "$FOREVER_VERSION" "forever"; then
+                    file_changed=true
+                fi
+                if update_toc_directive "$toc_file" "-Camelot" "$FOREVER_VERSION" "forever"; then
+                    file_changed=true
+                fi
+                if update_toc_directive "$toc_file" "-Forever" "$FOREVER_VERSION" "forever"; then
                     file_changed=true
                 fi
                 ;;
@@ -427,6 +440,7 @@ main() {
     FLAVOR_PRODUCT[classic]="wow_classic"
     FLAVOR_PRODUCT[vanilla]="wow_classic_era"
     FLAVOR_PRODUCT[tbc]="wow_anniversary"
+    FLAVOR_PRODUCT[forever]="wowf"
 
     declare -A FLAVOR_VERSION
 
@@ -444,6 +458,7 @@ main() {
     CLASSIC_VERSION="${FLAVOR_VERSION[classic]:-}"
     VANILLA_VERSION="${FLAVOR_VERSION[vanilla]:-}"
     TBC_VERSION="${FLAVOR_VERSION[tbc]:-}"
+    FOREVER_VERSION="${FLAVOR_VERSION[forever]:-}"
 
     # -- Find and update TOC files --------------------------------------------
     local updated_count=0
@@ -478,6 +493,11 @@ main() {
                 tbc)
                     grep -q "^## Interface-BCC: " "$toc_file" 2>/dev/null && has_directives=true || true
                     grep -q "^## Interface-TBC: " "$toc_file" 2>/dev/null && has_directives=true || true
+                    ;;
+                forever)
+                    grep -q "^## Interface: " "$toc_file" 2>/dev/null && has_directives=true || true
+                    grep -q "^## Interface-Camelot: " "$toc_file" 2>/dev/null && has_directives=true || true
+                    grep -q "^## Interface-Forever: " "$toc_file" 2>/dev/null && has_directives=true || true
                     ;;
             esac
         done

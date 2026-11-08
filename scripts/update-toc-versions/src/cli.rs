@@ -1,7 +1,7 @@
 use clap::Parser;
 
 /// Valid flavor names accepted by the CLI.
-const VALID_FLAVORS: &[&str] = &["retail", "classic", "vanilla", "tbc"];
+const VALID_FLAVORS: &[&str] = &["retail", "classic", "vanilla", "tbc", "forever"];
 
 /// Default directories excluded from TOC file search.
 const DEFAULT_EXCLUDE_DIRS: &[&str] = &["Libs"];
@@ -16,7 +16,7 @@ const DEFAULT_EXCLUDE_DIRS: &[&str] = &["Libs"];
 )]
 pub struct Cli {
     /// Flavor to update (can be specified multiple times).
-    /// Valid: retail, classic, vanilla, tbc. Default: all flavors.
+    /// Valid: retail, classic, vanilla, tbc, forever. Default: all flavors.
     #[arg(long = "flavor", value_name = "FLAVOR", value_parser = parse_flavor)]
     pub flavors: Vec<String>,
 

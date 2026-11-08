@@ -17,6 +17,7 @@ fn flavor_to_product(flavor: &str) -> &'static str {
         "classic" => "wow_classic",
         "vanilla" => "wow_classic_era",
         "tbc" => "wow_anniversary",
+        "forever" => "wowf",
         _ => unreachable!("invalid flavor: {flavor}"),
     }
 }

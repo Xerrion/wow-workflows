@@ -17,7 +17,7 @@ import { join, relative } from "node:path";
 const CDN_BASE = "https://us.version.battle.net/v2/products";
 const MAX_RETRIES = 5;
 const RETRY_DELAY = 2;
-const VALID_FLAVORS = ["retail", "classic", "vanilla", "tbc"] as const;
+const VALID_FLAVORS = ["retail", "classic", "vanilla", "tbc", "forever"] as const;
 const DEFAULT_EXCLUDE_DIRS = ["Libs"];
 
 type Flavor = (typeof VALID_FLAVORS)[number];
@@ -27,6 +27,7 @@ const FLAVOR_PRODUCT: Record<Flavor, string> = {
   classic: "wow_classic",
   vanilla: "wow_classic_era",
   tbc: "wow_anniversary",
+  forever: "wowf",
 };
 
 // ---------------------------------------------------------------------------
@@ -45,7 +46,7 @@ function sleep(seconds: number): Promise<void> {
 // versionToFlavor - Map an interface version number to its flavor name
 //
 // Args: ver = interface version string (e.g. "120001", "50502", "11503")
-// Returns: flavor name ("retail", "classic", "vanilla", "tbc",
+// Returns: flavor name ("retail", "classic", "vanilla", "tbc", "forever",
 //          "cata", "wrath", or "unknown")
 // ---------------------------------------------------------------------------
 function versionToFlavor(ver: string): string {
@@ -57,6 +58,7 @@ function versionToFlavor(ver: string): string {
   if (num >= 40000) return "cata";
   if (num >= 30000) return "wrath";
   if (num >= 20000) return "tbc";
+  if (num >= 16000 && num < 17000) return "forever";
   if (num >= 10000) return "vanilla";
   return "unknown";
 }
@@ -72,7 +74,7 @@ Fetches latest WoW interface versions from Blizzard's CDN and updates
 
 Options:
   --flavor FLAVOR       Flavor to update (can be specified multiple times)
-                        Valid: retail, classic, vanilla, tbc
+                        Valid: retail, classic, vanilla, tbc, forever
                         Default: all flavors
   --path DIR            Directory to search for .toc files (default: current directory)
   --exclude-dir DIR     Directory to exclude from TOC search (can be specified
@@ -402,6 +404,11 @@ async function updateTocFile(
         applyDirective("-BCC", version, "tbc");
         applyDirective("-TBC", version, "tbc");
         break;
+      case "forever":
+        applyDirective("", version, "forever");
+        applyDirective("-Camelot", version, "forever");
+        applyDirective("-Forever", version, "forever");
+        break;
     }
   }
 
@@ -437,6 +444,11 @@ function fileHasRelevantDirectives(
       case "tbc":
         if (hasDirective(content, "-BCC")) return true;
         if (hasDirective(content, "-TBC")) return true;
+        break;
+      case "forever":
+        if (hasDirective(content, "")) return true;
+        if (hasDirective(content, "-Camelot")) return true;
+        if (hasDirective(content, "-Forever")) return true;
         break;
     }
   }

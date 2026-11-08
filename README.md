@@ -138,7 +138,7 @@ Auto-bumps `## Interface` versions in `.toc` files. Fetches `update_toc_versions
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `flavors` | `"retail classic vanilla tbc"` | Space-separated list of game flavors |
+| `flavors` | `"retail classic vanilla tbc forever"` | Space-separated list of game flavors |
 | `base-branch` | `"master"` | Base branch for the PR |
 
 No secrets required.
@@ -162,7 +162,7 @@ jobs:
   toc-update:
     uses: Xerrion/wow-workflows/.github/workflows/toc-update.yml@main
     with:
-      flavors: "retail classic tbc"
+      flavors: "retail classic tbc forever"
 ```
 
 ## Scripts
@@ -181,12 +181,14 @@ Generates a clean markdown changelog for the BigWigsMods packager. It:
 
 Fetches latest WoW interface versions from the Blizzard CDN v2 (`us.version.battle.net`) and updates `## Interface` directives in `.toc` files.
 
-- Supports flavors: `retail`, `classic`, `vanilla`, `tbc`
-- Maps each flavor to its CDN product (`wow`, `wow_classic`, `wow_classic_era`, `wow_anniversary`)
-- Converts game version strings (e.g. `12.0.1`) to interface version numbers (e.g. `120001`)
-- Handles directive variants (`-Classic`, `-Mists`, `-Vanilla`, `-BCC`, `-TBC`)
+- Supports flavors: `retail`, `classic`, `vanilla`, `tbc`, `forever`
+- Maps each flavor to its CDN product (`wow`, `wow_classic`, `wow_classic_era`, `wow_anniversary`, [`wowf`](https://us.version.battle.net/v2/products/wowf/versions))
+- Converts game version strings (e.g. `1.60.1`) to interface version numbers (e.g. `16001`)
+- Handles directive variants (`-Classic`, `-Mists`, `-Vanilla`, `-BCC`, `-TBC`, `-Camelot`, `-Forever`)
 - Excludes `Libs/` by default; configurable via `--exclude-dir`
 - Caches CDN responses and retries on failure
+
+Forever is included by default; workflows with an explicit `flavors` list must add `forever` to that list. It updates existing `16000`–`16999` values in bare `## Interface:` lines, including `_Camelot.toc` files, while preserving other flavor values. It does not add missing directives or flavor values.
 
 ## Adopting Repos
 
