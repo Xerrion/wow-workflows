@@ -2,6 +2,14 @@
 
 Shared reusable GitHub Actions workflows for WoW addon release pipelines.
 
+## Repository releases
+
+`self-release.yml` runs on pushes to `main` and can also be dispatched manually. It creates or updates a release PR from conventional commits, such as `feat:` and `fix:`. Merging that PR publishes a GitHub release and a version tag such as `v1.0.0`; it does not run the addon packager.
+
+Release PRs maintain `version.txt`, `.release-please-manifest.json`, and `CHANGELOG.md` using the `simple` strategy in `release-please-config.json`. This repository version is independent of the Rust utility package versions.
+
+In **Settings → Actions → General**, **Allow GitHub Actions to create and approve pull requests** must be enabled. Default workflow permissions can remain read-only; the self-release workflow requests the required writes. It uses `GITHUB_TOKEN`, so its bot-created PRs do not automatically trigger other workflows.
+
 ## Workflows
 
 ### Release (`release.yml`)
