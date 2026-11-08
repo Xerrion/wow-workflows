@@ -13,7 +13,8 @@ use walkdir::WalkDir;
 /// - 40000-49999 -> "cata"
 /// - 30000-39999 -> "wrath"
 /// - 20000-29999 -> "tbc"
-/// - 10000-19999 -> "vanilla"
+/// - 16000-16999 -> "forever"
+/// - remaining 10000-19999 -> "vanilla"
 /// - else -> "unknown"
 fn version_to_flavor(version_str: &str) -> &'static str {
     let ver: u32 = version_str.parse().unwrap_or(0);
@@ -23,6 +24,7 @@ fn version_to_flavor(version_str: &str) -> &'static str {
         40_000..=49_999 => "cata",
         30_000..=39_999 => "wrath",
         20_000..=29_999 => "tbc",
+        16_000..=16_999 => "forever",
         10_000..=19_999 => "vanilla",
         _ => "unknown",
     }
@@ -71,6 +73,11 @@ pub fn has_relevant_directives(
                     || (!has_classic_flavor && starts("## Interface-Classic: "))
             }
             "tbc" => starts("## Interface-BCC: ") || starts("## Interface-TBC: "),
+            "forever" => {
+                starts("## Interface: ")
+                    || starts("## Interface-Camelot: ")
+                    || starts("## Interface-Forever: ")
+            }
             _ => false,
         };
         if found {
@@ -127,19 +134,19 @@ pub fn update_toc_file(
 fn directives_for_flavor(
     flavor: &str,
     has_classic_flavor: bool,
-) -> Vec<(&'static str, &'static str)> {
+) -> &'static [(&'static str, &'static str)] {
     match flavor {
-        "retail" => vec![("", "retail")],
-        "classic" => vec![("-Mists", "classic"), ("-Classic", "classic")],
-        "vanilla" => {
-            let mut dirs = vec![("-Vanilla", "vanilla")];
-            if !has_classic_flavor {
-                dirs.push(("-Classic", "vanilla"));
-            }
-            dirs
-        }
-        "tbc" => vec![("-BCC", "tbc"), ("-TBC", "tbc")],
-        _ => vec![],
+        "retail" => &[("", "retail")],
+        "classic" => &[("-Mists", "classic"), ("-Classic", "classic")],
+        "vanilla" if has_classic_flavor => &[("-Vanilla", "vanilla")],
+        "vanilla" => &[("-Vanilla", "vanilla"), ("-Classic", "vanilla")],
+        "tbc" => &[("-BCC", "tbc"), ("-TBC", "tbc")],
+        "forever" => &[
+            ("", "forever"),
+            ("-Camelot", "forever"),
+            ("-Forever", "forever"),
+        ],
+        _ => &[],
     }
 }
 
@@ -239,4 +246,170 @@ fn update_toc_directive(
     let new_content = content.replacen(&matched_line, &replacement, 1);
 
     DirectiveResult::Updated(new_content)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct TestToc {
+        path: PathBuf,
+    }
+
+    impl TestToc {
+        fn new(content: &str) -> Self {
+            static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+            loop {
+                let path = std::env::temp_dir().join(format!(
+                    "update-toc-versions-{}-{}.toc",
+                    std::process::id(),
+                    NEXT_ID.fetch_add(1, Ordering::Relaxed)
+                ));
+                match std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)
+                {
+                    Ok(mut file) => {
+                        file.write_all(content.as_bytes()).unwrap();
+                        return Self { path };
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                    Err(error) => panic!("could not create test TOC: {error}"),
+                }
+            }
+        }
+    }
+
+    impl Drop for TestToc {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+
+    #[test]
+    fn forever_range_is_isolated_from_vanilla() {
+        for (version, expected) in [
+            ("11508", "vanilla"),
+            ("15999", "vanilla"),
+            ("16000", "forever"),
+            ("16001", "forever"),
+            ("16999", "forever"),
+            ("17000", "vanilla"),
+            ("19999", "vanilla"),
+            ("20000", "tbc"),
+        ] {
+            assert_eq!(version_to_flavor(version), expected, "{version}");
+        }
+    }
+
+    #[test]
+    fn forever_updates_first_matching_bare_value_and_both_suffixes() {
+        let content = concat!(
+            "## Interface: 120000, 15999, 16000, 16999, 17000, 20505, 50500\n",
+            "## Interface-Camelot: 16000, 16005, 11508\n",
+            "## Interface-Forever: 16999, 120000\n",
+            "## Interface-Vanilla: 11508\n",
+            "## Interface-Classic: 50500\n",
+            "## Title: Example\n",
+        );
+        let expected = concat!(
+            "## Interface: 120000, 15999, 16001, 16999, 17000, 20505, 50500\n",
+            "## Interface-Camelot: 16001, 16005, 11508\n",
+            "## Interface-Forever: 16001, 120000\n",
+            "## Interface-Vanilla: 11508\n",
+            "## Interface-Classic: 50500\n",
+            "## Title: Example\n",
+        );
+        let toc = TestToc::new(content);
+        let flavors = vec!["forever".to_string()];
+        let versions = HashMap::from([("forever".to_string(), "16001".to_string())]);
+
+        assert!(has_relevant_directives(content, &flavors, false));
+        assert!(update_toc_file(&toc.path, content, &flavors, &versions, false, false).unwrap());
+        assert_eq!(std::fs::read_to_string(&toc.path).unwrap(), expected);
+        assert!(!update_toc_file(&toc.path, expected, &flavors, &versions, false, false).unwrap());
+    }
+
+    #[test]
+    fn forever_updates_each_directive_without_inserting_others() {
+        let flavors = vec!["forever".to_string()];
+        let versions = HashMap::from([("forever".to_string(), "16001".to_string())]);
+
+        for (content, expected) in [
+            ("## Interface: 16000\n", "## Interface: 16001\n"),
+            (
+                "## Interface-Camelot: 16000\n",
+                "## Interface-Camelot: 16001\n",
+            ),
+            (
+                "## Interface-Forever: 16000\n",
+                "## Interface-Forever: 16001\n",
+            ),
+        ] {
+            let toc = TestToc::new(content);
+            assert!(
+                has_relevant_directives(content, &flavors, false),
+                "{content}"
+            );
+            assert!(
+                update_toc_file(&toc.path, content, &flavors, &versions, false, false).unwrap()
+            );
+            assert_eq!(std::fs::read_to_string(&toc.path).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn forever_does_not_insert_absent_flavor_values_or_directives() {
+        let flavors = vec!["forever".to_string()];
+        let versions = HashMap::from([("forever".to_string(), "16001".to_string())]);
+
+        for content in [
+            "## Interface: 11508, 15999, 17000, 20505, 50500, 120000\n",
+            "## Interface-Vanilla: 11508\n## Interface-Classic: 50500\n",
+        ] {
+            let toc = TestToc::new(content);
+            assert!(
+                !update_toc_file(&toc.path, content, &flavors, &versions, false, false).unwrap()
+            );
+            assert_eq!(std::fs::read_to_string(&toc.path).unwrap(), content);
+        }
+        assert!(!has_relevant_directives(
+            "## Interface-Vanilla: 11508\n## Interface-Classic: 50500\n",
+            &flavors,
+            false,
+        ));
+    }
+
+    #[test]
+    fn forever_keeps_current_version_anywhere_in_each_directive() {
+        let content = concat!(
+            "## Interface: 11508, 16000, 16001\n",
+            "## Interface-Camelot: 16000, 16001\n",
+            "## Interface-Forever: 16999, 16001\n",
+        );
+        let toc = TestToc::new(content);
+        let flavors = vec!["forever".to_string()];
+        let versions = HashMap::from([("forever".to_string(), "16001".to_string())]);
+
+        assert!(!update_toc_file(&toc.path, content, &flavors, &versions, false, false).unwrap());
+        assert_eq!(std::fs::read_to_string(&toc.path).unwrap(), content);
+    }
+
+    #[test]
+    fn forever_dry_run_reports_changes_without_writing() {
+        let content = concat!(
+            "## Interface: 11508, 16000\n",
+            "## Interface-Camelot: 16000\n",
+            "## Interface-Forever: 16999\n",
+        );
+        let toc = TestToc::new(content);
+        let flavors = vec!["forever".to_string()];
+        let versions = HashMap::from([("forever".to_string(), "16001".to_string())]);
+
+        assert!(update_toc_file(&toc.path, content, &flavors, &versions, false, true).unwrap());
+        assert_eq!(std::fs::read_to_string(&toc.path).unwrap(), content);
+    }
 }

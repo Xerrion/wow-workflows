@@ -6,10 +6,10 @@ on:
       flavors:
         description: |-
           Space-separated list of game flavors to check.
-          Valid: retail, classic, vanilla, tbc
+          Valid: retail, classic, vanilla, tbc, forever
         required: false
         type: string
-        default: "retail classic vanilla tbc"
+        default: "retail classic vanilla tbc forever"
       base-branch:
         description: "Base branch for the PR"
         required: false
