@@ -30,12 +30,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.base-branch }}
 
       - name: Checkout workflow scripts
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: Xerrion/wow-workflows
           ref: ${{ github.job_workflow_sha }}

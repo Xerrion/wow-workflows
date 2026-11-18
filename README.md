@@ -152,7 +152,7 @@ Use `PR_TITLE` as the squash commit title in each repo's merge settings.
 name: PR Title
 
 on:
-  pull_request_target:
+  pull_request:
     branches: [master]
     types: [opened, edited, synchronize, reopened]
 
@@ -164,7 +164,7 @@ jobs:
     uses: Xerrion/wow-workflows/.github/workflows/pr-title.yml@main
 ```
 
-`pull_request_target` is intentional here: the workflow only reads the title from the event payload and never checks out PR code.
+Fork PRs run this with a read-only token, which is enough: the job only reads the title from the event payload and never checks out PR code.
 
 ### PR Labeler (`pr-labeler.yml`)
 
@@ -178,7 +178,7 @@ Adds a category label to a PR from its conventional-commit title, so GitHub's ge
 | `refactor` | `C-Code-Quality` |
 | `docs`, `doc` | `C-Documentation` |
 
-Other prefixes (`ci`, `chore`, `test`, `style`, `build`, `revert`) get no label and fall under "Other Changes". It never adds a second `C-*` label when one is already set. When a title is edited, it only swaps the label the old title would have produced, so labels set by hand stay. The labels must exist in the repo (shared `C-*` set).
+Other prefixes (`ci`, `chore`, `test`, `style`, `build`, `revert`) get no label and fall under "Other Changes". It never adds a second `C-*` label when one is already set. When a title is edited, it only swaps the label the old title would have produced, so labels set by hand stay. The labels must exist in the repo (shared `C-*` set). PRs from forks are skipped, because `pull_request` gives them a read-only token that cannot add labels; label those by hand.
 
 **Caller example:**
 
@@ -186,7 +186,7 @@ Other prefixes (`ci`, `chore`, `test`, `style`, `build`, `revert`) get no label 
 name: PR Labeler
 
 on:
-  pull_request_target:
+  pull_request:
     branches: [master]
     types: [opened, edited, reopened]
 
@@ -198,7 +198,7 @@ jobs:
     uses: Xerrion/wow-workflows/.github/workflows/pr-labeler.yml@main
 ```
 
-`pull_request_target` is intentional here: the workflow only reads the title and never checks out PR code.
+The job only reads the title and never checks out PR code.
 
 ### TOC Update (`toc-update.yml`)
 

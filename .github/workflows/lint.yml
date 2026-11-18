@@ -30,7 +30,7 @@ jobs:
         run: |
           echo "::error::Callers must trigger on pull_request. Under pull_request_target a bare checkout lints the base branch, not the PR."
           exit 1
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: nebularg/actions-luacheck@v1
         with:
           args: --no-color
@@ -45,11 +45,11 @@ jobs:
         run: |
           echo "::error::Callers must trigger on pull_request. Under pull_request_target a bare checkout lints the base branch, not the PR."
           exit 1
-      - uses: actions/checkout@v6
-      - uses: leafo/gh-actions-lua@v10
+      - uses: actions/checkout@v7
+      - uses: leafo/gh-actions-lua@v13
         with:
           luaVersion: "5.1"
-      - uses: leafo/gh-actions-luarocks@v4
+      - uses: leafo/gh-actions-luarocks@v6
       - run: luarocks install busted
       - name: Run tests
         run: busted --verbose

@@ -3,9 +3,9 @@ name: PR Title (reusable)
 on:
   workflow_call:
 
-    # Called from a pull_request_target workflow so fork PRs can be checked with a
-    # token that can read the PR. This is safe only because the job never checks out
-    # or executes PR code: it validates the title string from the event payload.
+    # Called from a pull_request workflow. The job only reads the PR title from the
+    # event payload and never checks out PR code, so the read-only token that fork
+    # PRs get is enough.
 permissions:
   pull-requests: read
 
