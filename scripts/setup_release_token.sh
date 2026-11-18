@@ -38,7 +38,7 @@ readonly SECRET_NAME="RELEASE_PLEASE_TOKEN"
 readonly TOKEN_NAME="release-please"
 readonly TOKEN_URL_BASE="https://github.com/settings/personal-access-tokens/new"
 readonly DEFAULT_REPOS=(
-    DragonLoot DragonToast DragonWidgets LibAnimate PhDamage RaidLogAuto wow-workflows
+    DragonLoot DragonShout DragonToast DragonWidgets LibAnimate PhDamage RaidLogAuto wow-workflows
 )
 OWNER="Xerrion"
 EXPIRES_DAYS=90
