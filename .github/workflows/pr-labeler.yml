@@ -3,16 +3,15 @@ name: PR Labeler (reusable)
 on:
   workflow_call:
 
-    # Called from a pull_request_target workflow so fork PRs get a token that can
-    # label them. This is safe only because the job never checks out or executes PR
-    # code: the title is read from the event payload and only reaches the shell as
-    # an environment variable, never as interpolated script text.
+    # Called from a pull_request workflow. Fork PRs get a read-only token there and
+    # cannot be labeled, so the job is skipped for them (see the `if` below).
 permissions:
   pull-requests: write
 
 jobs:
   label:
     name: Label from PR title
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       # Release notes group PRs by their C-* category label (see
