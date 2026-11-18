@@ -226,6 +226,8 @@ Fetches latest WoW interface versions from the Blizzard CDN v2 (`us.version.batt
 
 Forever is included by default; workflows with an explicit `flavors` list must add `forever` to that list. It updates existing `16000`–`16999` values in bare `## Interface:` lines, including `_Camelot.toc` files, while preserving other flavor values. It does not add missing directives or flavor values.
 
+`## Interface-Classic:` is ambiguous: the BigWigsMods packager reads it as Classic Era (e.g. `11509`), while older TOCs use it as a Mists alias (e.g. `50504`). The updater resolves it by the range of its current first value: a `50000`–`99999` value is updated by `classic`, a Classic Era value (`10000`–`19999`, excluding Forever's `16000`–`16999`) is updated by `vanilla`, and any other value is left unchanged. A Classic Era `## Interface-Classic:` line is therefore only bumped when `vanilla` is in `flavors`.
+
 ## Adopting Repos
 
 - [AddonName](https://github.com/Xerrion/AddonName)

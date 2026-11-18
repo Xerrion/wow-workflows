@@ -238,7 +238,9 @@ async function findTocFiles(
 //       suffix    = directive suffix (empty for "## Interface:", or e.g. "-Mists")
 //       version   = new version value
 //       targetFlavor = used to identify which value to replace in bare
-//                      "## Interface:" multi-value lists
+//                      "## Interface:" multi-value lists, and to resolve the
+//                      ambiguous "-Classic" suffix (only updated when its
+//                      first value already belongs to the target flavor)
 //       dryRun    = whether to skip actual writes
 // Returns: { content, message, changed }
 // ---------------------------------------------------------------------------
@@ -274,6 +276,16 @@ function updateTocDirective(
     .split(",")
     .map((v) => v.replace(/[\s\r]/g, ""))
     .filter((v) => v !== "");
+
+  // -Classic is ambiguous (Mists alias here, Classic Era for the BigWigs
+  // packager): only touch it when the current first value belongs to the
+  // flavor being processed.
+  if (
+    suffix === "-Classic" &&
+    versionToFlavor(values[0] ?? "") !== targetFlavor
+  ) {
+    return { content, message: null, changed: false };
+  }
 
   // Guard: if the new version already appears anywhere, nothing to do
   if (values.includes(version)) {
@@ -357,7 +369,6 @@ async function updateTocFile(
   initialContent: string,
   flavors: Flavor[],
   flavorVersions: Record<string, string>,
-  hasClassicFlavor: boolean,
   dryRun: boolean,
 ): Promise<boolean> {
   let content = initialContent;
@@ -392,13 +403,13 @@ async function updateTocFile(
         break;
       case "classic":
         applyDirective("-Mists", version, "classic");
+        // Legacy Mists alias; skipped unless its value is in the Mists range
         applyDirective("-Classic", version, "classic");
         break;
       case "vanilla":
         applyDirective("-Vanilla", version, "vanilla");
-        if (!hasClassicFlavor) {
-          applyDirective("-Classic", version, "vanilla");
-        }
+        // Classic Era (BigWigs packager); skipped unless its value is in the vanilla range
+        applyDirective("-Classic", version, "vanilla");
         break;
       case "tbc":
         applyDirective("-BCC", version, "tbc");
@@ -426,7 +437,6 @@ async function updateTocFile(
 function fileHasRelevantDirectives(
   content: string,
   flavors: Flavor[],
-  hasClassicFlavor: boolean,
 ): boolean {
   for (const flavor of flavors) {
     switch (flavor) {
@@ -439,7 +449,7 @@ function fileHasRelevantDirectives(
         break;
       case "vanilla":
         if (hasDirective(content, "-Vanilla")) return true;
-        if (!hasClassicFlavor && hasDirective(content, "-Classic")) return true;
+        if (hasDirective(content, "-Classic")) return true;
         break;
       case "tbc":
         if (hasDirective(content, "-BCC")) return true;
@@ -560,9 +570,6 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Track whether classic/vanilla flavors are active (for priority logic)
-  const hasClassicFlavor = args.flavors.includes("classic");
-
   // -- Fetch versions -------------------------------------------------------
   const flavorVersions: Record<string, string> = {};
 
@@ -588,7 +595,7 @@ async function main(): Promise<void> {
     const content = await Bun.file(tocFile).text();
 
     // Check if this file has any relevant directives before printing header
-    if (!fileHasRelevantDirectives(content, args.flavors, hasClassicFlavor)) {
+    if (!fileHasRelevantDirectives(content, args.flavors)) {
       continue;
     }
 
@@ -598,7 +605,6 @@ async function main(): Promise<void> {
       content,
       args.flavors,
       flavorVersions,
-      hasClassicFlavor,
       args.dryRun,
     );
     if (changed) {

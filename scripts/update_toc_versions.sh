@@ -190,7 +190,9 @@ find_toc_files() {
 #        $2 = directive suffix (empty string for "## Interface:", or e.g. "-Mists")
 #        $3 = new version value
 #        $4 = target flavor (e.g. "retail", "classic") - used to identify which
-#             value to replace in bare "## Interface:" multi-value lists
+#             value to replace in bare "## Interface:" multi-value lists, and
+#             to resolve the ambiguous "-Classic" suffix (only updated when its
+#             first value already belongs to the target flavor)
 # Returns: 0 if updated, 1 if directive not found or unchanged
 # ---------------------------------------------------------------------------
 update_toc_directive() {
@@ -218,6 +220,13 @@ update_toc_directive() {
         [[ -n "$val" ]] && values+=("$val")
     done
     unset IFS
+
+    # -Classic is ambiguous (Mists alias here, Classic Era for the BigWigs
+    # packager): only touch it when the current first value belongs to the
+    # flavor being processed.
+    if [[ "$suffix" == "-Classic" ]] && [[ "$(version_to_flavor "${values[0]:-}")" != "$target_flavor" ]]; then
+        return 1
+    fi
 
     # Guard: if the new version already appears anywhere, nothing to do
     for val in "${values[@]}"; do
@@ -285,7 +294,6 @@ update_toc_directive() {
 #        Remaining args = flavor names to process
 # Globals: RETAIL_VERSION, CLASSIC_VERSION, VANILLA_VERSION, TBC_VERSION,
 #          FOREVER_VERSION
-#          HAS_CLASSIC_FLAVOR, HAS_VANILLA_FLAVOR
 # Returns: 0 if any directive was updated, 1 if no changes
 # ---------------------------------------------------------------------------
 update_toc_file() {
@@ -306,21 +314,18 @@ update_toc_file() {
                 if update_toc_directive "$toc_file" "-Mists" "$CLASSIC_VERSION" "classic"; then
                     file_changed=true
                 fi
-                # classic flavor owns ## Interface-Classic: (MoP takes priority)
+                # Legacy Mists alias; skipped unless its value is in the Mists range
                 if update_toc_directive "$toc_file" "-Classic" "$CLASSIC_VERSION" "classic"; then
                     file_changed=true
                 fi
                 ;;
             vanilla)
-                # Only update ## Interface-Vanilla: unconditionally
                 if update_toc_directive "$toc_file" "-Vanilla" "$VANILLA_VERSION" "vanilla"; then
                     file_changed=true
                 fi
-                # Only update ## Interface-Classic: if the classic flavor is NOT active
-                if [[ "$HAS_CLASSIC_FLAVOR" != "true" ]]; then
-                    if update_toc_directive "$toc_file" "-Classic" "$VANILLA_VERSION" "vanilla"; then
-                        file_changed=true
-                    fi
+                # Classic Era (BigWigs packager); skipped unless its value is in the vanilla range
+                if update_toc_directive "$toc_file" "-Classic" "$VANILLA_VERSION" "vanilla"; then
+                    file_changed=true
                 fi
                 ;;
             tbc)
@@ -425,14 +430,6 @@ main() {
         exclude_dirs=("${DEFAULT_EXCLUDE_DIRS[@]}")
     fi
 
-    # -- Track whether classic/vanilla flavors are active (for priority logic) -
-    HAS_CLASSIC_FLAVOR="false"
-    HAS_VANILLA_FLAVOR="false"
-    for f in "${flavors[@]}"; do
-        if [[ "$f" == "classic" ]]; then HAS_CLASSIC_FLAVOR="true"; fi
-        if [[ "$f" == "vanilla" ]]; then HAS_VANILLA_FLAVOR="true"; fi
-    done
-
     # -- Fetch versions -------------------------------------------------------
     # Map: flavor -> CDN product
     declare -A FLAVOR_PRODUCT
@@ -486,9 +483,7 @@ main() {
                     ;;
                 vanilla)
                     grep -q "^## Interface-Vanilla: " "$toc_file" 2>/dev/null && has_directives=true || true
-                    if [[ "$HAS_CLASSIC_FLAVOR" != "true" ]]; then
-                        grep -q "^## Interface-Classic: " "$toc_file" 2>/dev/null && has_directives=true || true
-                    fi
+                    grep -q "^## Interface-Classic: " "$toc_file" 2>/dev/null && has_directives=true || true
                     ;;
                 tbc)
                     grep -q "^## Interface-BCC: " "$toc_file" 2>/dev/null && has_directives=true || true

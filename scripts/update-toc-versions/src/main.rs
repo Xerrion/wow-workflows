@@ -26,8 +26,6 @@ fn run(cli: Cli) -> Result<()> {
     let flavors = cli.effective_flavors();
     let exclude_dirs = cli.effective_exclude_dirs();
 
-    let has_classic_flavor = flavors.iter().any(|f| f == "classic");
-
     // -- Fetch versions from CDN ---------------------------------------------
     let mut version_cache: HashMap<String, String> = HashMap::new();
     let mut flavor_versions: HashMap<String, String> = HashMap::new();
@@ -59,21 +57,14 @@ fn run(cli: Cli) -> Result<()> {
     for toc_file in &toc_files {
         let content = std::fs::read_to_string(toc_file)?;
 
-        if !has_relevant_directives(&content, &flavors, has_classic_flavor) {
+        if !has_relevant_directives(&content, &flavors) {
             continue;
         }
 
         let display_path = toc_file.display();
         println!("Updating {display_path}:");
 
-        let changed = update_toc_file(
-            toc_file,
-            &content,
-            &flavors,
-            &flavor_versions,
-            has_classic_flavor,
-            cli.dry_run,
-        )?;
+        let changed = update_toc_file(toc_file, &content, &flavors, &flavor_versions, cli.dry_run)?;
 
         if changed {
             updated_count += 1;
