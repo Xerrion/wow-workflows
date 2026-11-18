@@ -58,20 +58,13 @@ pub fn find_toc_files(search_dir: &str, exclude_dirs: &[String]) -> Vec<PathBuf>
 
 /// Check whether TOC file content contains any directives relevant to the active
 /// flavors. Used to skip printing the file header for irrelevant files.
-pub fn has_relevant_directives(
-    content: &str,
-    flavors: &[String],
-    has_classic_flavor: bool,
-) -> bool {
+pub fn has_relevant_directives(content: &str, flavors: &[String]) -> bool {
     for flavor in flavors {
         let starts = |prefix: &str| content.lines().any(|line| line.starts_with(prefix));
         let found = match flavor.as_str() {
             "retail" => starts("## Interface: "),
             "classic" => starts("## Interface-Mists: ") || starts("## Interface-Classic: "),
-            "vanilla" => {
-                starts("## Interface-Vanilla: ")
-                    || (!has_classic_flavor && starts("## Interface-Classic: "))
-            }
+            "vanilla" => starts("## Interface-Vanilla: ") || starts("## Interface-Classic: "),
             "tbc" => starts("## Interface-BCC: ") || starts("## Interface-TBC: "),
             "forever" => {
                 starts("## Interface: ")
@@ -97,7 +90,6 @@ pub fn update_toc_file(
     content: &str,
     flavors: &[String],
     flavor_versions: &HashMap<String, String>,
-    has_classic_flavor: bool,
     dry_run: bool,
 ) -> Result<bool> {
     let mut content = content.to_string();
@@ -109,7 +101,7 @@ pub fn update_toc_file(
             None => continue,
         };
 
-        let directives = directives_for_flavor(flavor, has_classic_flavor);
+        let directives = directives_for_flavor(flavor);
 
         for (suffix, target_flavor) in directives {
             match update_toc_directive(&content, suffix, version, target_flavor, dry_run) {
@@ -130,15 +122,12 @@ pub fn update_toc_file(
 }
 
 /// Return the list of (directive_suffix, target_flavor) pairs for a given
-/// flavor, respecting the classic/vanilla priority logic.
-fn directives_for_flavor(
-    flavor: &str,
-    has_classic_flavor: bool,
-) -> &'static [(&'static str, &'static str)] {
+/// flavor. `-Classic` is listed for both classic and vanilla;
+/// `update_toc_directive` resolves it by the current value's range.
+fn directives_for_flavor(flavor: &str) -> &'static [(&'static str, &'static str)] {
     match flavor {
         "retail" => &[("", "retail")],
         "classic" => &[("-Mists", "classic"), ("-Classic", "classic")],
-        "vanilla" if has_classic_flavor => &[("-Vanilla", "vanilla")],
         "vanilla" => &[("-Vanilla", "vanilla"), ("-Classic", "vanilla")],
         "tbc" => &[("-BCC", "tbc"), ("-TBC", "tbc")],
         "forever" => &[
@@ -164,7 +153,9 @@ enum DirectiveResult {
 ///
 /// For flavor-specific directives (non-empty suffix), replaces the first
 /// comma-separated value. For bare `## Interface:`, replaces only the value
-/// whose flavor matches `target_flavor`.
+/// whose flavor matches `target_flavor`. The ambiguous `-Classic` suffix (Mists
+/// alias here, Classic Era for the BigWigs packager) is only updated when its
+/// first value already belongs to `target_flavor`.
 fn update_toc_directive(
     content: &str,
     suffix: &str,
@@ -201,6 +192,12 @@ fn update_toc_directive(
         .map(|v| v.trim().trim_matches('\r').to_string())
         .filter(|v| !v.is_empty())
         .collect();
+
+    // -Classic is ambiguous: only touch it when the current first value belongs
+    // to the flavor being processed.
+    if suffix == "-Classic" && values.first().map(|v| version_to_flavor(v)) != Some(target_flavor) {
+        return DirectiveResult::NotFound;
+    }
 
     // If the new version already appears, nothing to do
     if values.iter().any(|v| v == version) {
@@ -327,10 +324,10 @@ mod tests {
         let flavors = vec!["forever".to_string()];
         let versions = HashMap::from([("forever".to_string(), "16001".to_string())]);
 
-        assert!(has_relevant_directives(content, &flavors, false));
-        assert!(update_toc_file(&toc.path, content, &flavors, &versions, false, false).unwrap());
+        assert!(has_relevant_directives(content, &flavors));
+        assert!(update_toc_file(&toc.path, content, &flavors, &versions, false).unwrap());
         assert_eq!(std::fs::read_to_string(&toc.path).unwrap(), expected);
-        assert!(!update_toc_file(&toc.path, expected, &flavors, &versions, false, false).unwrap());
+        assert!(!update_toc_file(&toc.path, expected, &flavors, &versions, false).unwrap());
     }
 
     #[test]
@@ -350,13 +347,8 @@ mod tests {
             ),
         ] {
             let toc = TestToc::new(content);
-            assert!(
-                has_relevant_directives(content, &flavors, false),
-                "{content}"
-            );
-            assert!(
-                update_toc_file(&toc.path, content, &flavors, &versions, false, false).unwrap()
-            );
+            assert!(has_relevant_directives(content, &flavors), "{content}");
+            assert!(update_toc_file(&toc.path, content, &flavors, &versions, false).unwrap());
             assert_eq!(std::fs::read_to_string(&toc.path).unwrap(), expected);
         }
     }
@@ -371,15 +363,12 @@ mod tests {
             "## Interface-Vanilla: 11508\n## Interface-Classic: 50500\n",
         ] {
             let toc = TestToc::new(content);
-            assert!(
-                !update_toc_file(&toc.path, content, &flavors, &versions, false, false).unwrap()
-            );
+            assert!(!update_toc_file(&toc.path, content, &flavors, &versions, false).unwrap());
             assert_eq!(std::fs::read_to_string(&toc.path).unwrap(), content);
         }
         assert!(!has_relevant_directives(
             "## Interface-Vanilla: 11508\n## Interface-Classic: 50500\n",
             &flavors,
-            false,
         ));
     }
 
@@ -394,7 +383,7 @@ mod tests {
         let flavors = vec!["forever".to_string()];
         let versions = HashMap::from([("forever".to_string(), "16001".to_string())]);
 
-        assert!(!update_toc_file(&toc.path, content, &flavors, &versions, false, false).unwrap());
+        assert!(!update_toc_file(&toc.path, content, &flavors, &versions, false).unwrap());
         assert_eq!(std::fs::read_to_string(&toc.path).unwrap(), content);
     }
 
@@ -409,7 +398,90 @@ mod tests {
         let flavors = vec!["forever".to_string()];
         let versions = HashMap::from([("forever".to_string(), "16001".to_string())]);
 
-        assert!(update_toc_file(&toc.path, content, &flavors, &versions, false, true).unwrap());
+        assert!(update_toc_file(&toc.path, content, &flavors, &versions, true).unwrap());
+        assert_eq!(std::fs::read_to_string(&toc.path).unwrap(), content);
+    }
+
+    fn flavor_list(names: &[&str]) -> Vec<String> {
+        names.iter().map(|name| name.to_string()).collect()
+    }
+
+    fn latest_versions() -> HashMap<String, String> {
+        HashMap::from([
+            ("retail".to_string(), "120005".to_string()),
+            ("classic".to_string(), "50505".to_string()),
+            ("vanilla".to_string(), "11510".to_string()),
+            ("tbc".to_string(), "20505".to_string()),
+            ("forever".to_string(), "16001".to_string()),
+        ])
+    }
+
+    #[test]
+    fn classic_flavor_leaves_classic_era_interface_classic_untouched() {
+        let content = "## Interface-Mists: 50504\n## Interface-Classic: 11509\n";
+        let expected = "## Interface-Mists: 50505\n## Interface-Classic: 11509\n";
+        let toc = TestToc::new(content);
+        let flavors = flavor_list(&["retail", "classic", "tbc", "forever"]);
+
+        assert!(update_toc_file(&toc.path, content, &flavors, &latest_versions(), false).unwrap());
+        assert_eq!(std::fs::read_to_string(&toc.path).unwrap(), expected);
+    }
+
+    #[test]
+    fn vanilla_flavor_updates_classic_era_interface_classic_alongside_classic() {
+        let content = "## Interface-Mists: 50504\n## Interface-Classic: 11509\n";
+        let expected = "## Interface-Mists: 50505\n## Interface-Classic: 11510\n";
+        let toc = TestToc::new(content);
+        let flavors = flavor_list(&["retail", "classic", "vanilla", "tbc", "forever"]);
+
+        assert!(update_toc_file(&toc.path, content, &flavors, &latest_versions(), false).unwrap());
+        assert_eq!(std::fs::read_to_string(&toc.path).unwrap(), expected);
+    }
+
+    #[test]
+    fn classic_flavor_updates_legacy_mists_interface_classic() {
+        let content = "## Interface-Classic: 50504\n";
+        let expected = "## Interface-Classic: 50505\n";
+
+        for names in [
+            &["classic"][..],
+            &["classic", "vanilla"][..],
+            &["vanilla", "classic"][..],
+        ] {
+            let toc = TestToc::new(content);
+            let flavors = flavor_list(names);
+
+            assert!(has_relevant_directives(content, &flavors), "{names:?}");
+            assert!(
+                update_toc_file(&toc.path, content, &flavors, &latest_versions(), false).unwrap(),
+                "{names:?}"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&toc.path).unwrap(),
+                expected,
+                "{names:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn vanilla_flavor_leaves_mists_interface_classic_untouched() {
+        let content = "## Interface-Classic: 50504\n";
+        let toc = TestToc::new(content);
+        let flavors = flavor_list(&["vanilla"]);
+
+        assert!(has_relevant_directives(content, &flavors));
+        assert!(!update_toc_file(&toc.path, content, &flavors, &latest_versions(), false).unwrap());
+        assert_eq!(std::fs::read_to_string(&toc.path).unwrap(), content);
+    }
+
+    #[test]
+    fn vanilla_flavor_leaves_forever_interface_classic_untouched() {
+        let content = "## Interface-Classic: 16000\n";
+        let toc = TestToc::new(content);
+        let flavors = flavor_list(&["vanilla"]);
+
+        assert!(!update_toc_file(&toc.path, content, &flavors, &latest_versions(), false).unwrap());
         assert_eq!(std::fs::read_to_string(&toc.path).unwrap(), content);
     }
 }
