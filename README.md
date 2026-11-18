@@ -178,7 +178,7 @@ Adds a category label to a PR from its conventional-commit title, so GitHub's ge
 | `refactor` | `C-Code-Quality` |
 | `docs`, `doc` | `C-Documentation` |
 
-Other prefixes (`ci`, `chore`, `test`, `style`, `build`, `revert`) get no label and fall under "Other Changes". It never adds a second `C-*` label when one is already set. When a title is edited, it only swaps the label the old title would have produced, so labels set by hand stay. The labels must exist in the repo (shared `C-*` set). PRs from forks are skipped, because `pull_request` gives them a read-only token that cannot add labels; label those by hand.
+Other prefixes (`ci`, `chore`, `test`, `style`, `build`, `revert`) get no label and fall under "Other Changes". It never adds a second `C-*` label when one is already set. When a title is edited, it only swaps the label the old title would have produced, so labels set by hand stay. The labels must exist in the repo (shared `C-*` set).
 
 **Caller example:**
 
@@ -186,7 +186,7 @@ Other prefixes (`ci`, `chore`, `test`, `style`, `build`, `revert`) get no label 
 name: PR Labeler
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [master]
     types: [opened, edited, reopened]
 
@@ -198,7 +198,7 @@ jobs:
     uses: Xerrion/wow-workflows/.github/workflows/pr-labeler.yml@main
 ```
 
-The job only reads the title and never checks out PR code.
+`pull_request_target` is the one deliberate exception to the `pull_request` rule: under `pull_request`, fork PRs get a read-only token and could not be labeled. It is safe here because the job never checks out PR code and only reads the title from the event payload.
 
 ### TOC Update (`toc-update.yml`)
 
