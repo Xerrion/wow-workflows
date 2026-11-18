@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.0.1 (2026-11-18)
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### ⚙️ Other Changes
+* ci: add reusable conventional PR title check by @Xerrion in https://github.com/Xerrion/wow-workflows/pull/8
+* chore: add script to provision RELEASE_PLEASE_TOKEN by @Xerrion in https://github.com/Xerrion/wow-workflows/pull/9
+* ci: lint on pull_request, fail on pull_request_target, add release token by @Xerrion in https://github.com/Xerrion/wow-workflows/pull/7
+* chore: remove release token script by @Xerrion in https://github.com/Xerrion/wow-workflows/pull/11
+* fix: resolve Interface-Classic by value range in TOC updater by @Xerrion in https://github.com/Xerrion/wow-workflows/pull/12
+* chore: use GitHub-generated release notes to credit contributors by @Xerrion in https://github.com/Xerrion/wow-workflows/pull/14
+* ci: add PR labeler and unify release note categories by @Xerrion in https://github.com/Xerrion/wow-workflows/pull/15
+* ci: use pull_request triggers and update action versions by @Xerrion in https://github.com/Xerrion/wow-workflows/pull/16
+* ci: run the PR labeler on pull_request_target for fork PRs by @Xerrion in https://github.com/Xerrion/wow-workflows/pull/17
+
+
+**Full Changelog**: https://github.com/Xerrion/wow-workflows/compare/v1.0.0...v1.0.1
+
 ## 1.0.0 (2026-11-08)
 
 
