@@ -1,0 +1,66 @@
+name: PR Labeler (reusable)
+
+on:
+  workflow_call:
+
+    # Called from a pull_request_target workflow so fork PRs get a token that can
+    # label them. This is safe only because the job never checks out or executes PR
+    # code: the title is read from the event payload and only reaches the shell as
+    # an environment variable, never as interpolated script text.
+permissions:
+  pull-requests: write
+
+jobs:
+  label:
+    name: Label from PR title
+    runs-on: ubuntu-latest
+    steps:
+      # Release notes group PRs by their C-* category label (see
+      # .github/release.yml). Types without a category label (ci, chore, test,
+      # style, build, revert) are left unlabeled and land in "Other Changes".
+      - name: Apply category label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+          OLD_TITLE: ${{ github.event.changes.title.from }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+
+          label_for() {
+            local prefix
+            prefix=$(printf '%s' "$1" | sed -nE 's/^([a-z]+)(\([^)]*\))?!?:[[:space:]].*/\1/p')
+            case "$prefix" in
+              feat) echo C-Feature ;;
+              fix) echo C-Bug ;;
+              perf) echo C-Performance ;;
+              refactor) echo C-Code-Quality ;;
+              doc | docs) echo C-Documentation ;;
+              *) echo "" ;;
+            esac
+          }
+
+          new=$(label_for "$TITLE")
+          old=""
+          if [ -n "$OLD_TITLE" ]; then
+            old=$(label_for "$OLD_TITLE")
+          fi
+          labels=$(jq -r '.[]' <<<"$LABELS")
+
+          # A retitled PR swaps only the label the previous title would have
+          # produced, so labels set by hand are never removed.
+          if [ -n "$old" ] && [ "$old" != "$new" ] && grep -Fxq "$old" <<<"$labels"; then
+            gh api -X DELETE "repos/$REPO/issues/$NUMBER/labels/$old" >/dev/null
+            labels=$(grep -Fxv "$old" <<<"$labels" || true)
+          fi
+
+          if [ -z "$new" ]; then
+            exit 0
+          fi
+          # Never add a second category when one is already set.
+          if grep -q '^C-' <<<"$labels"; then
+            exit 0
+          fi
+          gh api -X POST "repos/$REPO/issues/$NUMBER/labels" -f "labels[]=$new" >/dev/null

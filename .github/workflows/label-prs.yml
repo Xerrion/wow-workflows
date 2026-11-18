@@ -1,0 +1,15 @@
+name: Label PRs
+
+# pull_request_target so fork PRs get a token that can label them. The called
+# workflow never checks out PR code; it only reads the title.
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, edited, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  label:
+    uses: ./.github/workflows/pr-labeler.yml
