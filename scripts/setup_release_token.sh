@@ -7,8 +7,9 @@
 # GitHub has no API for creating personal access tokens, so the token itself is
 # created in the browser. This script opens the creation page with the name,
 # description, expiry and permissions pre-filled, reads the token you paste
-# (hidden, never in argv or shell history), validates it against every target
-# repo, and stores it as a repository secret with `gh secret set`.
+# (hidden, never in argv or shell history), proves it works on every target
+# repo by using it (creates, then removes, a branch, draft PR and label), and
+# stores it as a repository secret with `gh secret set`.
 #
 # Usage:  bash scripts/setup_release_token.sh [OPTIONS] [REPO...]
 #
@@ -17,7 +18,7 @@
 #   --expires DAYS      Token lifetime to pre-fill, 1-366 (default: 90)
 #   --no-open           Print the creation URL instead of opening a browser
 #   --check             Only report which repos have the secret; change nothing
-#   --dry-run           Validate the token but do not store the secret
+#   --dry-run           Run the probes but do not store the secret
 #   -h, --help          Show this help
 #
 # REPO is "name" or "owner/name". Defaults to every repo in DEFAULT_REPOS.
@@ -118,18 +119,62 @@ check_secrets() {
     return "$missing"
 }
 
-# Confirms the token authenticates and can push to every target repo. It cannot
-# prove Pull requests/Issues write; the first release-please run does that.
+# Exercises the token itself, because repo metadata (e.g. .permissions.push)
+# reflects the user's role and public repos are readable without any grant.
+# Per repo, in a subshell so GH_TOKEN and the cleanup trap stay local, it:
+#   - creates a commit and branch ref        -> Contents: write, repo selected
+#   - opens a draft PR from that branch      -> Pull requests: write
+#   - creates a label                        -> Issues: write
+# then closes the PR and deletes the branch and label, even on failure.
+probe_repo() {
+    local repo="$1" token="$2"
+    (
+        export GH_TOKEN="$token"
+        local ref="release-token-probe-$$" label_name="release-token-probe"
+        local branch base tree commit pr="" label=false
+        cleanup() {
+            if [[ -n "$pr" ]]; then
+                gh api -X PATCH "repos/$repo/pulls/$pr" -f state=closed >/dev/null 2>&1 || true
+            fi
+            gh api -X DELETE "repos/$repo/git/refs/heads/$ref" >/dev/null 2>&1 || true
+            if [[ "$label" == true ]]; then
+                gh api -X DELETE "repos/$repo/labels/$label_name" >/dev/null 2>&1 || true
+            fi
+        }
+        fail() {
+            printf '  FAILED   %s: %s\n' "$repo" "$1" >&2
+            exit 1
+        }
+        trap cleanup EXIT
+
+        branch=$(gh api "repos/$repo" --jq .default_branch 2>/dev/null) \
+            || fail "repository not visible to the token"
+        base=$(gh api "repos/$repo/git/ref/heads/$branch" --jq .object.sha 2>/dev/null) \
+            || fail "cannot read branch $branch"
+        tree=$(gh api "repos/$repo/git/commits/$base" --jq .tree.sha 2>/dev/null) \
+            || fail "cannot read commit $base"
+        commit=$(gh api -X POST "repos/$repo/git/commits" -f message="release-token probe" \
+            -f tree="$tree" -f "parents[]=$base" --jq .sha 2>/dev/null) \
+            || fail "cannot create a commit: add the repo under Repository access and set Contents to Read and write"
+        gh api -X POST "repos/$repo/git/refs" -f ref="refs/heads/$ref" -f sha="$commit" >/dev/null 2>&1 \
+            || fail "cannot create a branch: set Contents to Read and write"
+        pr=$(gh api -X POST "repos/$repo/pulls" -f title="release-token probe (auto-closed)" \
+            -f head="$ref" -f base="$branch" -F draft=true --jq .number 2>/dev/null) \
+            || fail "cannot open a pull request: set Pull requests to Read and write"
+        gh api -X POST "repos/$repo/labels" -f name="$label_name" -f color=ededed >/dev/null 2>&1 \
+            || fail "cannot create a label: set Issues to Read and write"
+        label=true
+        printf '  ok       %s\n' "$repo"
+    )
+}
+
 validate_token() {
-    local token="$1" login repo push
+    local token="$1" login repo
     login=$(GH_TOKEN="$token" gh api user --jq .login 2>/dev/null) \
         || die "token was rejected by GitHub (expired, mistyped, or revoked)"
     echo "Token belongs to: $login"
     for repo in "${REPOS[@]}"; do
-        push=$(GH_TOKEN="$token" gh api "repos/$repo" --jq .permissions.push 2>/dev/null) \
-            || die "token cannot see $repo; add it under Repository access"
-        [[ "$push" == "true" ]] || die "token has no write access to $repo; set Contents to Read and write"
-        printf '  ok       %s\n' "$repo"
+        probe_repo "$repo" "$token" || die "token failed validation on $repo"
     done
 }
 

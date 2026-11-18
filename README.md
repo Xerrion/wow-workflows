@@ -200,16 +200,16 @@ Forever is included by default; workflows with an explicit `flavors` list must a
 
 ### `setup_release_token.sh`
 
-Provisions the `RELEASE_PLEASE_TOKEN` secret on every addon repo. GitHub has no API for creating personal access tokens, so the script cannot mint one: it opens the fine-grained token page with the name, expiry and permissions (Contents, Pull requests and Issues write) pre-filled. You pick the repositories, copy the token, and paste it at the hidden prompt. The script then checks the token can push to every target repo and stores it with `gh secret set` (the token never appears in argv or shell history).
+Provisions the `RELEASE_PLEASE_TOKEN` secret on every addon repo. GitHub has no API for creating personal access tokens, so the script cannot mint one: it opens the fine-grained token page with the name, expiry and permissions (Contents, Pull requests and Issues write) pre-filled. You pick the repositories, copy the token, and paste it at the hidden prompt. The script then proves the token works on every target repo by using it, and stores it with `gh secret set` (the token never appears in argv or shell history).
 
 ```bash
 bash scripts/setup_release_token.sh              # all default repos
 bash scripts/setup_release_token.sh PhDamage     # one repo
 bash scripts/setup_release_token.sh --check      # report which repos lack the secret
-bash scripts/setup_release_token.sh --dry-run    # validate only, store nothing
+bash scripts/setup_release_token.sh --dry-run    # run the probes only, store nothing
 ```
 
-Validation proves authentication and write access to each repo. It cannot test Pull requests or Issues write, so confirm with the first release-please run. Tokens expire (90 days by default); re-run the script to rotate.
+Validation does not trust repo metadata, since public repos are readable by any token. For each repo it creates a commit and branch (Contents write), opens a draft PR (Pull requests write) and creates a label (Issues write), then closes the PR and deletes the branch and label, including on failure. Each run leaves one closed `release-token probe (auto-closed)` PR per repo. Tokens expire (90 days by default); re-run the script to rotate.
 
 ## Adopting Repos
 
