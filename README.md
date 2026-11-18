@@ -203,7 +203,7 @@ jobs:
 
 ## Scripts
 
-`generate_changelog.sh` and `update_toc_versions.sh` live in `scripts/` and are fetched at runtime by the workflows - caller repos do not need local copies. `setup_release_token.sh` is a maintainer tool run locally.
+Both scripts live in `scripts/` and are fetched at runtime by the workflows - caller repos do not need local copies.
 
 ### `generate_changelog.sh`
 
@@ -225,19 +225,6 @@ Fetches latest WoW interface versions from the Blizzard CDN v2 (`us.version.batt
 - Caches CDN responses and retries on failure
 
 Forever is included by default; workflows with an explicit `flavors` list must add `forever` to that list. It updates existing `16000`–`16999` values in bare `## Interface:` lines, including `_Camelot.toc` files, while preserving other flavor values. It does not add missing directives or flavor values.
-
-### `setup_release_token.sh`
-
-Provisions the `RELEASE_PLEASE_TOKEN` secret on every addon repo. GitHub has no API for creating personal access tokens, so the script cannot mint one: it opens the fine-grained token page with the name, expiry and permissions (Contents, Pull requests and Issues write) pre-filled. You pick the repositories, copy the token, and paste it at the hidden prompt. The script then proves the token works on every target repo by using it, and stores it with `gh secret set` (the token never appears in argv or shell history).
-
-```bash
-bash scripts/setup_release_token.sh              # all default repos
-bash scripts/setup_release_token.sh PhDamage     # one repo
-bash scripts/setup_release_token.sh --check      # report which repos lack the secret
-bash scripts/setup_release_token.sh --dry-run    # run the probes only, store nothing
-```
-
-Validation does not trust repo metadata, since public repos are readable by any token. For each repo it creates a commit and branch (Contents write), opens a draft PR (Pull requests write) and creates a label (Issues write), then closes the PR and deletes the branch and label, including on failure. Each run leaves one closed `release-token probe (auto-closed)` PR per repo. Tokens expire (90 days by default); re-run the script to rotate.
 
 ## Adopting Repos
 
