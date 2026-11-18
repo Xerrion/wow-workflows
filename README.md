@@ -138,6 +138,32 @@ jobs:
       run-tests: true
 ```
 
+### PR Title (`pr-title.yml`)
+
+Fails a PR whose title is not a conventional commit (`feat:`, `fix(scope):`, ...). Repos squash-merge with the PR title as the commit message, and release-please derives version bumps and changelog entries from it.
+
+Use `PR_TITLE` as the squash commit title in each repo's merge settings.
+
+**Caller example:**
+
+```yaml
+name: PR Title
+
+on:
+  pull_request_target:
+    branches: [master]
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  pr-title:
+    uses: Xerrion/wow-workflows/.github/workflows/pr-title.yml@main
+```
+
+`pull_request_target` is intentional here: the workflow only reads the title from the event payload and never checks out PR code.
+
 ### TOC Update (`toc-update.yml`)
 
 Auto-bumps `## Interface` versions in `.toc` files. Fetches `update_toc_versions.sh` at runtime, runs it against the checked-out repo, and creates a PR via `gh` CLI if any TOC files changed.
