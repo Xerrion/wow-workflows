@@ -8,7 +8,7 @@ Shared reusable GitHub Actions workflows for WoW addon release pipelines.
 
 Release PRs maintain `version.txt`, `.release-please-manifest.json`, and `CHANGELOG.md` using the `simple` strategy in `release-please-config.json`. This repository version is independent of the Rust utility package versions.
 
-In **Settings → Actions → General**, **Allow GitHub Actions to create and approve pull requests** must be enabled. Default workflow permissions can remain read-only; the self-release workflow requests the required writes. It uses `GITHUB_TOKEN`, so its bot-created PRs do not automatically trigger other workflows.
+In **Settings → Actions → General**, **Allow GitHub Actions to create and approve pull requests** must be enabled. Default workflow permissions can remain read-only; the self-release workflow requests the required writes. It uses the `RELEASE_PLEASE_TOKEN` secret when set (falling back to `GITHUB_TOKEN`, whose bot-created PRs do not trigger other workflows).
 
 ## Workflows
 
@@ -20,6 +20,8 @@ Runs release-please to create/update release PRs. When a release PR is merged, i
 
 1. **release-please** creates/updates release PRs via [release-please-action@v4](https://github.com/googleapis/release-please-action). When a release PR is merged, it publishes a GitHub release with a tag.
 2. **dispatch** triggers the `packager.yml` workflow in the calling repo via `workflow_dispatch`, passing the new tag name. This avoids the GitHub Actions limitation where tags created by `GITHUB_TOKEN` don't trigger `on: push: tags` workflows, and sidesteps the BigWigsMods/packager "future tag" guard that blocks packaging on branch push events.
+
+**Secrets:** `RELEASE_PLEASE_TOKEN` (fine-grained PAT or GitHub App token with Contents and Pull requests write on the calling repo). Callers pass it with `secrets: inherit`. Without it the workflow falls back to `GITHUB_TOKEN`, and release PRs will not trigger the `pull_request` lint workflow, so required checks never report.
 
 **Inputs:**
 
@@ -114,7 +116,7 @@ Runs Luacheck on PRs, with an optional busted test suite.
 name: Lint
 
 on:
-  pull_request_target:
+  pull_request:
     branches: [master]
 
 jobs:
@@ -128,7 +130,7 @@ jobs:
 name: Lint
 
 on:
-  pull_request_target:
+  pull_request:
     branches: [master]
 
 jobs:
