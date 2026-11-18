@@ -166,6 +166,40 @@ jobs:
 
 `pull_request_target` is intentional here: the workflow only reads the title from the event payload and never checks out PR code.
 
+### PR Labeler (`pr-labeler.yml`)
+
+Adds a category label to a PR from its conventional-commit title, so GitHub's generated release notes (`.github/release.yml`, grouped by label) sort it into the right section:
+
+| Title prefix | Label |
+|--------------|-------|
+| `feat` | `C-Feature` |
+| `fix` | `C-Bug` |
+| `perf` | `C-Performance` |
+| `refactor` | `C-Code-Quality` |
+| `docs`, `doc` | `C-Documentation` |
+
+Other prefixes (`ci`, `chore`, `test`, `style`, `build`, `revert`) get no label and fall under "Other Changes". It never adds a second `C-*` label when one is already set. When a title is edited, it only swaps the label the old title would have produced, so labels set by hand stay. The labels must exist in the repo (shared `C-*` set).
+
+**Caller example:**
+
+```yaml
+name: PR Labeler
+
+on:
+  pull_request_target:
+    branches: [master]
+    types: [opened, edited, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  label:
+    uses: Xerrion/wow-workflows/.github/workflows/pr-labeler.yml@main
+```
+
+`pull_request_target` is intentional here: the workflow only reads the title and never checks out PR code.
+
 ### TOC Update (`toc-update.yml`)
 
 Auto-bumps `## Interface` versions in `.toc` files. Fetches `update_toc_versions.sh` at runtime, runs it against the checked-out repo, and creates a PR via `gh` CLI if any TOC files changed.
